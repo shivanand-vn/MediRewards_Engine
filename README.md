@@ -76,7 +76,7 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000) (which redirects to `/docs`)
 ## Example API Requests (Postman Collection)
 
 For rapid manual testing, we have provided a pre-configured Postman Collection:
-1. Locate the file [MediRewards_Engine.postman_collection.json](file:///F:/MediRewards_Engine/MediRewards_Engine/MediRewards_Engine.postman_collection.json) at the root of the project.
+1. Locate the file [MediRewards_Engine.postman_collection.json](MediRewards_Engine/MediRewards_Engine.postman_collection.json) at the root of the project.
 2. Open Postman and click on **Import** in the top-left corner.
 3. Drag and drop the collection JSON file.
 4. The collection includes environment variables (like `{{base_url}}` pointing to `http://127.0.0.1:8000`) and pre-configured request payloads.
