@@ -1,0 +1,19 @@
+{
+  "base_points": {
+    "medicine_purchase": 10,
+    "referral": 50,
+    "subscription_purchase": 30,
+    "repeat_purchase": 15
+  },
+  "bonuses": {
+    "high_value_purchase": {
+      "minimum_amount": 2000,
+      "bonus_points": 20
+    },
+    "weekend_purchase": {
+      "minimum_amount": 500,
+      "bonus_points": 25
+    }
+  },
+  "max_points_per_event": 100
+}

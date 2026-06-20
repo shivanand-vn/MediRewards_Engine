@@ -1,0 +1,169 @@
+{
+	"info": {
+		"_postman_id": "4c8c704f-124b-48c0-bc69-34b7f83e29f8",
+		"name": "MediRewards_Engine",
+		"description": "Postman Collection for testing the MediRewards_Engine API.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Process Event - Medicine Purchase",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"event_id\": \"EVT001\",\n  \"user_id\": \"USER001\",\n  \"event_type\": \"medicine_purchase\",\n  \"amount\": 2500,\n  \"timestamp\": \"2026-06-20T10:00:00Z\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/events",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"events"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Process Event - Repeat Purchase (Valid)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"event_id\": \"EVT002\",\n  \"user_id\": \"USER001\",\n  \"event_type\": \"repeat_purchase\",\n  \"amount\": 1000,\n  \"timestamp\": \"2026-06-25T10:00:00Z\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/events",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"events"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get User Balance",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/users/USER001/balance",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"users",
+						"USER001",
+						"balance"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get User Ledger",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/users/USER001/ledger",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"users",
+						"USER001",
+						"ledger"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Get Rewards Catalog",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/rewards",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"rewards"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Redeem Reward",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"user_id\": \"USER001\",\n  \"reward_id\": 1\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/redeem",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"redeem"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Reverse Event",
+			"request": {
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "{{base_url}}/reverse/EVT001",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"reverse",
+						"EVT001"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"event": [],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://127.0.0.1:8000",
+			"type": "string"
+		}
+	]
+}
