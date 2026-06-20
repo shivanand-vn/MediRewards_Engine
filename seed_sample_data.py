@@ -7,18 +7,15 @@ from app.models.reward import Reward
 from app.models.redemption import Redemption
 
 def seed_sample_data():
-    print("Connecting to the database...")
+    print("Recreating database tables (wiping existing data)...")
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+    
     db: Session = SessionLocal()
 
     try:
-        # Check if we already seeded sample data to avoid duplicates
-        existing_event = db.query(Event).filter(Event.event_id == "EVT101").first()
-        if existing_event:
-            print("Sample data is already present in the database.")
-            return
-
-        # Seed rewards if not present
+        # 1. Seed rewards catalog
+        print("Seeding rewards catalog...")
         rewards_to_seed = [
             {"reward_name": "Free Delivery Coupon", "points_required": 100, "reward_type": "delivery_coupon"},
             {"reward_name": "Wallet Credit ₹50", "points_required": 250, "reward_type": "wallet_credit"},
@@ -26,153 +23,133 @@ def seed_sample_data():
             {"reward_name": "Wallet Credit ₹200", "points_required": 1000, "reward_type": "wallet_credit"},
             {"reward_name": "Premium Membership", "points_required": 1500, "reward_type": "premium_membership"},
         ]
+        rewards = {}
         for r_data in rewards_to_seed:
-            existing = db.query(Reward).filter(Reward.reward_name == r_data["reward_name"]).first()
-            if not existing:
-                db.add(Reward(**r_data))
+            reward = Reward(**r_data)
+            db.add(reward)
+            db.flush()
+            rewards[r_data["reward_name"]] = reward
         db.commit()
 
-        delivery_coupon = db.query(Reward).filter(Reward.reward_name == "Free Delivery Coupon").first()
+        # Helper to log events and ledger entries
+        def add_credit_event(user_id, event_id, event_type, amount, dt, points, is_reversed=False):
+            evt = Event(
+                event_id=event_id,
+                user_id=user_id,
+                event_type=event_type,
+                amount=amount,
+                timestamp=dt,
+                status="reversed" if is_reversed else "processed"
+            )
+            db.add(evt)
+            db.flush()
+            
+            ledger = LedgerEntry(
+                user_id=user_id,
+                event_id=event_id,
+                entry_type="CREDIT",
+                points=points,
+                reference_id=None
+            )
+            db.add(ledger)
+            db.flush()
+            return ledger
 
-        print("Seeding sample data for USER001...")
-        # 1. USER001 - Medicine Purchase (Saturday 2026-06-20 -> earns 55 points)
-        evt101 = Event(
-            event_id="EVT101",
-            user_id="USER001",
-            event_type="medicine_purchase",
-            amount=2500.0,
-            timestamp=datetime.datetime(2026, 6, 20, 10, 0, 0),
-            status="processed"
-        )
-        db.add(evt101)
-        db.flush()
+        def add_reversal(user_id, event_id, original_ledger_id, points):
+            ledger = LedgerEntry(
+                user_id=user_id,
+                event_id=event_id,
+                entry_type="REVERSAL",
+                points=-points,
+                reference_id=str(original_ledger_id)
+            )
+            db.add(ledger)
+            db.flush()
 
-        ledger101 = LedgerEntry(
-            user_id="USER001",
-            event_id="EVT101",
-            entry_type="CREDIT",
-            points=55,
-            reference_id=None
-        )
-        db.add(ledger101)
+        def add_redemption(user_id, reward_name, points_spent, dt):
+            reward = rewards[reward_name]
+            red = Redemption(
+                user_id=user_id,
+                reward_id=reward.id,
+                points_spent=points_spent,
+                redeemed_at=dt
+            )
+            db.add(red)
+            db.flush()
+            
+            ledger = LedgerEntry(
+                user_id=user_id,
+                event_id=None,
+                entry_type="DEBIT",
+                points=-points_spent,
+                reference_id=str(red.id)
+            )
+            db.add(ledger)
+            db.flush()
 
-        # 2. USER001 - Referral (Monday 2026-06-22 -> earns 50 points)
-        evt102 = Event(
-            event_id="EVT102",
-            user_id="USER001",
-            event_type="referral",
-            amount=0.0,
-            timestamp=datetime.datetime(2026, 6, 22, 12, 0, 0),
-            status="processed"
-        )
-        db.add(evt102)
-        db.flush()
+        # --- USER001 ---
+        print("Seeding USER001...")
+        # Medicine Purchase (Saturday -> earns 55 points)
+        add_credit_event("USER001", "EVT101", "medicine_purchase", 2500.0, datetime.datetime(2026, 6, 20, 10, 0), 55)
+        # Referral (Monday -> earns 50 points)
+        add_credit_event("USER001", "EVT102", "referral", 0.0, datetime.datetime(2026, 6, 22, 12, 0), 50)
+        # Redemption (Free Delivery Coupon -> costs 100 points)
+        add_redemption("USER001", "Free Delivery Coupon", 100, datetime.datetime(2026, 6, 23, 14, 0))
 
-        ledger102 = LedgerEntry(
-            user_id="USER001",
-            event_id="EVT102",
-            entry_type="CREDIT",
-            points=50,
-            reference_id=None
-        )
-        db.add(ledger102)
+        # --- USER002 ---
+        print("Seeding USER002...")
+        # Subscription Purchase (Sunday -> earns 75 points)
+        add_credit_event("USER002", "EVT201", "subscription_purchase", 3000.0, datetime.datetime(2026, 6, 21, 10, 0), 75)
+        # Repeat Purchase (Wednesday -> earns 15 points)
+        add_credit_event("USER002", "EVT202", "repeat_purchase", 1000.0, datetime.datetime(2026, 6, 24, 10, 0), 15)
+        # Medicine Purchase (Thursday -> earns 10 points, then reversed)
+        led203 = add_credit_event("USER002", "EVT203", "medicine_purchase", 200.0, datetime.datetime(2026, 6, 25, 10, 0), 10, is_reversed=True)
+        add_reversal("USER002", "EVT203", led203.id, 10)
 
-        # 3. USER001 - Redeem Reward (Free Delivery Coupon -> costs 100 points)
-        redemption101 = Redemption(
-            user_id="USER001",
-            reward_id=delivery_coupon.id,
-            points_spent=100,
-            redeemed_at=datetime.datetime(2026, 6, 23, 14, 0, 0)
-        )
-        db.add(redemption101)
-        db.flush()
+        # --- USER003 (New User 1) ---
+        print("Seeding USER003...")
+        # Weekend high-value medicine purchase (Saturday -> earns 55 points)
+        add_credit_event("USER003", "EVT301", "medicine_purchase", 2500.0, datetime.datetime(2026, 6, 20, 10, 0), 55)
+        # Referral (Monday -> earns 50 points)
+        add_credit_event("USER003", "EVT302", "referral", 0.0, datetime.datetime(2026, 6, 22, 12, 0), 50)
+        # Redemption (Free Delivery Coupon -> costs 100 points)
+        add_redemption("USER003", "Free Delivery Coupon", 100, datetime.datetime(2026, 6, 23, 14, 0))
 
-        ledger_red101 = LedgerEntry(
-            user_id="USER001",
-            event_id=None,
-            entry_type="DEBIT",
-            points=-100,
-            reference_id=str(redemption101.id)
-        )
-        db.add(ledger_red101)
+        # --- USER004 (New User 2) ---
+        print("Seeding USER004...")
+        # Earns high points to redeem Wallet Credit
+        add_credit_event("USER004", "EVT401", "subscription_purchase", 5000.0, datetime.datetime(2026, 6, 21, 10, 0), 75)
+        add_credit_event("USER004", "EVT402", "medicine_purchase", 4000.0, datetime.datetime(2026, 6, 27, 10, 0), 55)
+        add_credit_event("USER004", "EVT403", "referral", 0.0, datetime.datetime(2026, 6, 29, 12, 0), 50)
+        add_credit_event("USER004", "EVT404", "referral", 0.0, datetime.datetime(2026, 6, 30, 12, 0), 50)
+        add_credit_event("USER004", "EVT405", "repeat_purchase", 3000.0, datetime.datetime(2026, 7, 4, 10, 0), 60)
+        # Redemption (Wallet Credit ₹50 -> costs 250 points)
+        add_redemption("USER004", "Wallet Credit ₹50", 250, datetime.datetime(2026, 7, 5, 14, 0))
 
+        # --- USER005 (New User 3) ---
+        print("Seeding USER005...")
+        # Regular small purchaser (no redemptions)
+        add_credit_event("USER005", "EVT501", "medicine_purchase", 800.0, datetime.datetime(2026, 6, 22, 10, 0), 10)
+        add_credit_event("USER005", "EVT502", "repeat_purchase", 900.0, datetime.datetime(2026, 6, 24, 10, 0), 15)
+        add_credit_event("USER005", "EVT503", "repeat_purchase", 1200.0, datetime.datetime(2026, 6, 27, 10, 0), 40)
 
-        print("Seeding sample data for USER002...")
-        # 4. USER002 - Subscription Purchase (Sunday 2026-06-21 -> earns 75 points)
-        evt201 = Event(
-            event_id="EVT201",
-            user_id="USER002",
-            event_type="subscription_purchase",
-            amount=3000.0,
-            timestamp=datetime.datetime(2026, 6, 21, 10, 0, 0),
-            status="processed"
-        )
-        db.add(evt201)
-        db.flush()
+        # --- USER006 (New User 4) ---
+        print("Seeding USER006...")
+        # Reversal user (refunded order)
+        led601 = add_credit_event("USER006", "EVT601", "medicine_purchase", 2500.0, datetime.datetime(2026, 6, 22, 10, 0), 30, is_reversed=True)
+        add_reversal("USER006", "EVT601", led601.id, 30)
+        add_credit_event("USER006", "EVT602", "referral", 0.0, datetime.datetime(2026, 6, 23, 12, 0), 50)
 
-        ledger201 = LedgerEntry(
-            user_id="USER002",
-            event_id="EVT201",
-            entry_type="CREDIT",
-            points=75,
-            reference_id=None
-        )
-        db.add(ledger201)
-
-        # 5. USER002 - Repeat Purchase (Wednesday 2026-06-24 -> earns 15 points)
-        evt202 = Event(
-            event_id="EVT202",
-            user_id="USER002",
-            event_type="repeat_purchase",
-            amount=1000.0,
-            timestamp=datetime.datetime(2026, 6, 24, 10, 0, 0),
-            status="processed"
-        )
-        db.add(evt202)
-        db.flush()
-
-        ledger202 = LedgerEntry(
-            user_id="USER002",
-            event_id="EVT202",
-            entry_type="CREDIT",
-            points=15,
-            reference_id=None
-        )
-        db.add(ledger202)
-
-        # 6. USER002 - Medicine Purchase (Thursday 2026-06-25 -> earns 10 points, then reversed)
-        evt203 = Event(
-            event_id="EVT203",
-            user_id="USER002",
-            event_type="medicine_purchase",
-            amount=200.0,
-            timestamp=datetime.datetime(2026, 6, 25, 10, 0, 0),
-            status="reversed" # Marked as reversed
-        )
-        db.add(evt203)
-        db.flush()
-
-        ledger203 = LedgerEntry(
-            user_id="USER002",
-            event_id="EVT203",
-            entry_type="CREDIT",
-            points=10,
-            reference_id=None
-        )
-        db.add(ledger203)
-        db.flush()
-
-        ledger_rev203 = LedgerEntry(
-            user_id="USER002",
-            event_id="EVT203",
-            entry_type="REVERSAL",
-            points=-10,
-            reference_id=str(ledger203.id)
-        )
-        db.add(ledger_rev203)
+        # --- USER007 (New User 5) ---
+        print("Seeding USER007...")
+        # Capped high value purchaser + redemption
+        add_credit_event("USER007", "EVT701", "subscription_purchase", 10000.0, datetime.datetime(2026, 6, 21, 10, 0), 75)
+        add_credit_event("USER007", "EVT702", "referral", 0.0, datetime.datetime(2026, 6, 22, 12, 0), 50)
+        # Redemption (Free Delivery Coupon -> costs 100 points)
+        add_redemption("USER007", "Free Delivery Coupon", 100, datetime.datetime(2026, 6, 23, 14, 0))
 
         db.commit()
-        print("Database seeded with sample data successfully!")
+        print("Database seeded with sample data for all 7 users successfully!")
 
     except Exception as e:
         db.rollback()
