@@ -92,41 +92,28 @@ python -m pytest app/tests/ -v
 
 ---
 
-## Design Decisions & Trade-offs
+## Design Decisions
 
 ### 1. Reversal Balance Policy (Negative Balances)
 * **Decision**: We allow points balances to temporarily drop below zero when an event is reversed (e.g. order cancellation/return) even if the user spent their points on a reward in the meantime.
 * **Rationale**: Reversals represent physical business realities (goods returned, payments failed). Preventing a reversal due to insufficient balance would allow users to abuse the system by immediately redeeming points and returning goods.
 * **Trade-off**: Balance calculation must handle negative values, and negative balances are locked out of redemption until the user earns back points to reach a positive balance.
 
-### 2. SQLite In-Memory Testing Architecture
-* **Decision**: Overriding `get_db` to yield session bindings sharing a single persistent connection, rather than starting a global transaction in `conftest.py`.
-* **Rationale**: FastAPI runs sync routes on a separate worker threadpool. Yielding a shared session is not thread-safe. Instead, we share the **connection** and create thread-local sessions bound to that connection.
-* **Trade-off**: Disabling connection-level transactions means we rely on SQLite's auto-commit mode. State cleanup is done by closing the connection (which wipes out the in-memory SQLite schema entirely), which is extremely clean.
-
-### 3. No Hardcoded Rules
+### 2. No Hardcoded Rules
 * **Decision**: All rules (base points, thresholds, weekend bonuses, maximum caps) are configured in `app/config/rules.json`.
 * **Rationale**: Business rules change frequently. Keeping them in JSON allows configuration updates without modifying code logic or redeploying code.
 * **Trade-off**: Adds a minor file-reading overhead on startup, which is mitigated by caching the rules in memory.
 
-### 4. Signed Ledger Points
+### 3. Signed Ledger Points
 * **Decision**: We store point values as signed integers (`points` can be negative for `DEBIT` and `REVERSAL` types) rather than absolute values with sign-swapping in Python.
 * **Rationale**: Makes balance queries highly efficient and safe from database bugs. The SQL sum is simply `SUM(points)`, avoiding complex CASE-WHEN SQL blocks.
 
 ---
 
-## Take-Home Assignment Write-up (AI Tool Usage & Design Decisions)
+## AI Tool Usage
 
-Below is a summary of the design decisions, trade-offs, and tool usage during the development of this project.
+I used Google Gemini to write the code, but the entire architectural logic is my own, which I designed based on my self-taught experience and learning from software engineering tutorials. 
 
-### 1. Designed Ourselves vs. AI Starting Point
-* **AI Starting Point**: I utilized AI tools to generate the boilerplate code for FastAPI route registration, Pydantic schema validation structures, and basic SQLModel/SQLAlchemy declarative mappings.
-* **Self-Designed**: I designed the immutable points ledger schema (using signed points values) and the specific SQLite in-memory connection-sharing testing architecture. Setting up the database schema and transaction commits for concurrency-safe event processing was done manually to ensure strict idempotency behavior.
+For the rules engine, I structured it using an external JSON config file so that the business rules are extremely easy to modify and readable even for a non-technical reader. The ledger calculates balances dynamically by summing historical ledger entries to maintain a clean audit history. This setup trades off a minor database query overhead for bulletproof data integrity, preventing any sync issues.
 
-### 2. Rules Engine & Ledger Structure Trade-offs
-* **Rules Engine**: The rules are loaded from an external JSON file (`rules.json`). The trade-off is a negligible file-reading and parsing overhead at startup, but it keeps business rules completely decoupled from application code, meaning bonuses, caps, or base points can be changed without re-compiling or redeploying code.
-* **Ledger**: Instead of storing a mutable `balance` column on a user profile, points are tracked strictly in an immutable transactional ledger. The user's balance is dynamically derived via an indexed SQL `SUM(points)` query. The trade-off is the database query overhead as the ledger grows, but it provides a bulletproof audit trail, makes reversals trivial to record (as compensating negative entries), and prevents balance drift.
-
-### 3. Overriding and Correcting AI Suggestions
-* **SQLite In-Memory testing**: The AI suggested using a global database transaction in `conftest.py` using a single session for all tests. However, FastAPI runs synchronous route functions on a separate worker thread pool. Sharing a single SQLAlchemy session across threads led to thread-safety errors and database session lock collisions.
-* **Correction**: I overrode the AI's proposal and instead configured the test fixtures to share a single SQLite connection, but spin up separate thread-local database sessions bound to that connection. This allowed tests to run concurrently and safely, wiping the database cleanly by closing the underlying connection at the end of the test suite.
+During development, I had to manually correct and rewrite what Gemini generated for the database session setup in tests and route registrations to ensure they matched the structure of the FastAPI application. I had initially planned to use CodeRabbit for further code reviews, but skipped it due to the overnight time constraints of the assignment.
