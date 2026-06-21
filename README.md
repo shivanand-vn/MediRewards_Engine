@@ -112,3 +112,21 @@ python -m pytest app/tests/ -v
 ### 4. Signed Ledger Points
 * **Decision**: We store point values as signed integers (`points` can be negative for `DEBIT` and `REVERSAL` types) rather than absolute values with sign-swapping in Python.
 * **Rationale**: Makes balance queries highly efficient and safe from database bugs. The SQL sum is simply `SUM(points)`, avoiding complex CASE-WHEN SQL blocks.
+
+---
+
+## Take-Home Assignment Write-up (AI Tool Usage & Design Decisions)
+
+Below is a summary of the design decisions, trade-offs, and tool usage during the development of this project.
+
+### 1. Designed Ourselves vs. AI Starting Point
+* **AI Starting Point**: I utilized AI tools to generate the boilerplate code for FastAPI route registration, Pydantic schema validation structures, and basic SQLModel/SQLAlchemy declarative mappings.
+* **Self-Designed**: I designed the immutable points ledger schema (using signed points values) and the specific SQLite in-memory connection-sharing testing architecture. Setting up the database schema and transaction commits for concurrency-safe event processing was done manually to ensure strict idempotency behavior.
+
+### 2. Rules Engine & Ledger Structure Trade-offs
+* **Rules Engine**: The rules are loaded from an external JSON file (`rules.json`). The trade-off is a negligible file-reading and parsing overhead at startup, but it keeps business rules completely decoupled from application code, meaning bonuses, caps, or base points can be changed without re-compiling or redeploying code.
+* **Ledger**: Instead of storing a mutable `balance` column on a user profile, points are tracked strictly in an immutable transactional ledger. The user's balance is dynamically derived via an indexed SQL `SUM(points)` query. The trade-off is the database query overhead as the ledger grows, but it provides a bulletproof audit trail, makes reversals trivial to record (as compensating negative entries), and prevents balance drift.
+
+### 3. Overriding and Correcting AI Suggestions
+* **SQLite In-Memory testing**: The AI suggested using a global database transaction in `conftest.py` using a single session for all tests. However, FastAPI runs synchronous route functions on a separate worker thread pool. Sharing a single SQLAlchemy session across threads led to thread-safety errors and database session lock collisions.
+* **Correction**: I overrode the AI's proposal and instead configured the test fixtures to share a single SQLite connection, but spin up separate thread-local database sessions bound to that connection. This allowed tests to run concurrently and safely, wiping the database cleanly by closing the underlying connection at the end of the test suite.
